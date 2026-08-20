@@ -1,0 +1,43 @@
+:root {
+    --bg-main: #0a0705;
+    --bg-card: #130f0c;
+    --bg-input: #1c1612;
+    --surface-hover: #261e18;
+    --border-color: #ffffff1c;
+    --border-light: #ffffff0a;
+    
+    --primary: #ff6b00;
+    --primary-hover: #ff852e;
+    --primary-bg: #ff6b000f;
+    
+    --urgente-bg: #1f1113;
+    --sucesso: #39ff6a;
+    --sucesso-bg: #0e1f1a;
+    --renegociar: #fbbf24;
+    --renegociar-bg: #221b0f;
+    --agendada: #38bdf8;
+    --agendada-bg: #0f1c26;
+    --outros: #a78bfa;
+    --outros-bg: #171126;
+    --auditoria: #f43f3f;
+    --auditoria-bg: #221013;
+    
+    --text-main: #ff8000;
+    --text-muted: #aa7c5f;
+}
+
+/* Opcional: Ajuste do scrollbar para combinar com o dark mode */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-main); 
+}
+::-webkit-scrollbar-thumb {
+    background: var(--surface-hover); 
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-color); 
+}

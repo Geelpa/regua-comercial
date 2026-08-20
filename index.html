@@ -4,223 +4,176 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Resgate VPU</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    :root{
-      --brown:#3F2F1F;
-      --dark:#110D09;
-      --filter:#B38C65;
-      --shadow:#94704E;
-      --cream:#F5F1EB;
-      --line:#DED4C8;
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#ff6b00', hover: '#ff852e', light: '#ff6b000f', dark: '#ff6b00' },
+            theme: {
+              main: '#0a0705',
+              card: '#130f0c',
+              input: '#1c1612',
+              hover: '#261e18',
+              border: '#ffffff1c',
+              textMain: '#f5f0eb',
+              textMuted: '#9c8e85'
+            }
+          }
+        }
+      }
     }
-    body{background:var(--brown);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    .shadow-custom{box-shadow:0 8px 22px rgba(148,112,78,.38)}
-    .kpi{background:var(--dark)}
-    .filter{background:var(--filter)}
-    .copyable{cursor:pointer;transition:.15s}
-    .copyable:hover{background:#eee7de}
-    .toast{transform:translateY(12px);opacity:0;pointer-events:none;transition:.2s}
-    .toast.show{transform:translateY(0);opacity:1}
-    input[type=file]::file-selector-button{background:var(--dark);color:white;border:0;border-radius:7px;padding:8px 12px;margin-right:10px;cursor:pointer}
-  </style>
+  </script>
+  <link rel="stylesheet" href="css/styles.css">
 </head>
-<body class="min-h-screen text-[#110D09]">
-  <main class="max-w-[1500px] mx-auto p-5 md:p-7">
-    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
-      <div class="text-white">
-        <h1 class="text-2xl font-bold">Resgate VPU</h1>
-        <p class="text-sm opacity-75">Acompanhamento da régua de prospecções perdidas</p>
+<body class="bg-theme-main p-4 text-theme-textMain text-xs">
+  <main class="max-w-7xl mx-auto space-y-4">
+
+    <!-- Header Compacto -->
+    <header class="flex justify-between items-center bg-theme-card px-4 py-3 rounded-lg border border-theme-border shadow-sm">
+      <div class="flex items-center gap-3">
+        <span class="text-[12px] font-bold text-brand tracking-widest uppercase bg-theme-input px-2 py-1 rounded border border-theme-border">VPU • COMERCIAL</span>
+        <div>
+          <h1 class="text-lg font-bold text-theme-textMain leading-none">Resgate</h1>
+          <p class="text-[12px] text-theme-textMuted mt-0.5">Régua de prospecções perdidas</p>
+        </div>
       </div>
-      <label class="bg-white rounded-xl px-4 py-3 shadow-custom cursor-pointer text-sm font-semibold">
+      <label class="bg-brand hover:bg-brand-hover text-white px-3 py-1.5 rounded text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
         <span>Importar CSV</span>
-        <input id="csvFile" type="file" accept=".csv,text/csv" class="hidden">
+        <input id="csvFile" type="file" accept=".csv,text/csv" hidden>
       </label>
     </header>
 
-    <section class="filter rounded-2xl p-4 mb-5 shadow-custom">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-        <div>
-          <label class="block text-xs font-bold mb-1">Data em que foi marcado "Perdemos"</label>
-          <input id="baseDate" type="date" class="w-full rounded-lg border-0 px-3 py-2 bg-white outline-none">
+    <!-- Filtros em Card Unificado (4 Colunas) -->
+    <section class="bg-theme-card p-3 rounded-lg border border-theme-border shadow-sm space-y-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <!-- Ano -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-theme-textMain">Ano</span>
+            <button type="button" id="clearYears" class="text-[12px] text-brand hover:underline hidden">Limpar</button>
+          </div>
+          <div id="yearTags" class="flex flex-wrap gap-1 min-h-[22px] items-center"></div>
+          <input id="searchYear" type="text" placeholder="Filtrar ano..." class="bg-theme-input border border-theme-border rounded px-2 py-1 text-[12px] text-theme-textMain outline-none focus:border-brand">
+          <div id="yearGroup" class="max-h-28 bg-theme-input border border-theme-border rounded p-1.5 overflow-y-auto space-y-1 text-[12px]"></div>
         </div>
-        <div>
-          <label class="block text-xs font-bold mb-1">Canal</label>
-          <select id="channelFilter" class="w-full rounded-lg border-0 px-3 py-2 bg-white outline-none"><option value="">Todos</option></select>
+
+        <!-- Canal -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-theme-textMain">Canal</span>
+            <button type="button" id="clearChannels" class="text-[12px] text-brand hover:underline hidden">Limpar</button>
+          </div>
+          <div id="channelTags" class="flex flex-wrap gap-1 min-h-[22px] items-center"></div>
+          <input id="searchChannel" type="text" placeholder="Filtrar canal..." class="bg-theme-input border border-theme-border rounded px-2 py-1 text-[12px] text-theme-textMain outline-none focus:border-brand">
+          <div id="channelGroup" class="max-h-28 bg-theme-input border border-theme-border rounded p-1.5 overflow-y-auto space-y-1 text-[12px]"></div>
         </div>
-        <div>
-          <label class="block text-xs font-bold mb-1">Campanha</label>
-          <select id="campaignFilter" class="w-full rounded-lg border-0 px-3 py-2 bg-white outline-none"><option value="">Todas</option></select>
+
+        <!-- Campanha -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-theme-textMain">Campanha</span>
+            <button type="button" id="clearCampaigns" class="text-[12px] text-brand hover:underline hidden">Limpar</button>
+          </div>
+          <div id="campaignTags" class="flex flex-wrap gap-1 min-h-[22px] items-center"></div>
+          <input id="searchCampaign" type="text" placeholder="Filtrar campanha..." class="bg-theme-input border border-theme-border rounded px-2 py-1 text-[12px] text-theme-textMain outline-none focus:border-brand">
+          <div id="campaignGroup" class="max-h-28 bg-theme-input border border-theme-border rounded p-1.5 overflow-y-auto space-y-1 text-[12px]"></div>
         </div>
-        <button id="clearBtn" class="rounded-lg bg-[#110D09] text-white px-4 py-2 font-semibold hover:opacity-90">Limpar</button>
+
+        <!-- Perdemos (Motivo) -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-theme-textMain">Perdemos</span>
+            <button type="button" id="clearDescriptions" class="text-[12px] text-brand hover:underline hidden">Limpar</button>
+          </div>
+          <div id="descriptionTags" class="flex flex-wrap gap-1 min-h-[22px] items-center"></div>
+          <input id="searchDescription" type="text" placeholder="Filtrar motivo..." class="bg-theme-input border border-theme-border rounded px-2 py-1 text-[12px] text-theme-textMain outline-none focus:border-brand">
+          <div id="descriptionGroup" class="max-h-28 bg-theme-input border border-theme-border rounded p-1.5 overflow-y-auto space-y-1 text-[12px]"></div>
+        </div>
+
+      </div>
+
+      <!-- Barra de Pesquisa Geral -->
+      <div class="flex gap-2 pt-2 border-t border-theme-border">
+        <input id="search" type="search" placeholder="Buscar por ID, nome, telefone, taxa, valor..." class="w-full bg-theme-input border border-theme-border text-theme-textMain rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand outline-none placeholder-theme-textMuted text-xs">
+        <button id="clearBtn" class="bg-theme-hover hover:bg-opacity-80 border border-theme-border text-theme-textMain px-3 py-1.5 rounded font-medium transition-colors text-xs whitespace-nowrap">Limpar Tudo</button>
       </div>
     </section>
 
-    <section id="kpis" class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5"></section>
+    <!-- KPIs -->
+    <section id="kpis" class="grid grid-cols-2 md:grid-cols-5 gap-2.5">
+      <div class="kpi-card cursor-pointer border border-theme-border rounded-lg p-2.5 bg-theme-card hover:border-brand transition-all shadow-sm" data-stage="3">
+        <span class="text-[12px] font-semibold text-theme-textMuted uppercase">D+3</span>
+        <strong id="count-3" class="text-lg font-bold text-theme-textMain my-0.5 block leading-tight">0</strong>
+        <small class="text-[12px] text-theme-textMuted block truncate">Follow-up rápido</small>
+      </div>
+      <div class="kpi-card cursor-pointer border border-theme-border rounded-lg p-2.5 bg-theme-card hover:border-brand transition-all shadow-sm" data-stage="7">
+        <span class="text-[12px] font-semibold text-theme-textMuted uppercase">D+7</span>
+        <strong id="count-7" class="text-lg font-bold text-theme-textMain my-0.5 block leading-tight">0</strong>
+        <small class="text-[12px] text-theme-textMuted block truncate">Retorno curto</small>
+      </div>
+      <div class="kpi-card cursor-pointer border border-theme-border rounded-lg p-2.5 bg-theme-card hover:border-brand transition-all shadow-sm" data-stage="30">
+        <span class="text-[12px] font-semibold text-theme-textMuted uppercase">D+30</span>
+        <strong id="count-30" class="text-lg font-bold text-theme-textMain my-0.5 block leading-tight">0</strong>
+        <small class="text-[12px] text-theme-textMuted block truncate">Início de mês</small>
+      </div>
+      <div class="kpi-card cursor-pointer border border-theme-border rounded-lg p-2.5 bg-theme-card hover:border-brand transition-all shadow-sm" data-stage="90">
+        <span class="text-[12px] font-semibold text-theme-textMuted uppercase">D+90</span>
+        <strong id="count-90" class="text-lg font-bold text-theme-textMain my-0.5 block leading-tight">0</strong>
+        <small class="text-[12px] text-theme-textMuted block truncate">Trimestral</small>
+      </div>
+      <div class="kpi-card cursor-pointer border border-theme-border rounded-lg p-2.5 bg-theme-card hover:border-brand transition-all shadow-sm" data-stage="360">
+        <span class="text-[12px] font-semibold text-theme-textMuted uppercase">D+360</span>
+        <strong id="count-360" class="text-lg font-bold text-theme-textMain my-0.5 block leading-tight">0</strong>
+        <small class="text-[12px] text-theme-textMuted block truncate">Fim de fidelidade</small>
+      </div>
+    </section>
 
-    <section class="bg-[#F5F1EB] rounded-2xl shadow-custom overflow-hidden">
-      <div class="p-4 border-b border-[#DED4C8] flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+    <!-- Tabela Compacta -->
+    <section class="bg-theme-card rounded-lg shadow-sm border border-theme-border overflow-hidden">
+      <div class="px-4 py-3 border-b border-theme-border flex justify-between items-center">
         <div>
-          <h2 class="font-bold text-lg">Clientes para trabalhar</h2>
-          <p id="summary" class="text-sm opacity-65">Importe um CSV para começar.</p>
+          <h2 class="text-sm font-bold text-theme-textMain">Clientes para trabalhar</h2>
+          <p id="summary" class="text-[12px] text-theme-textMuted">Importe um CSV para começar.</p>
         </div>
-        <input id="search" type="search" placeholder="Buscar nome, contato ou ID..." class="w-full md:w-80 rounded-lg border border-[#DED4C8] px-3 py-2 outline-none">
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-[#E7DED3]">
+        <table class="w-full text-left border-collapse">
+          <thead class="bg-theme-input text-[12px] text-theme-textMuted uppercase font-semibold">
             <tr>
-              <th class="text-left px-4 py-3">Copiar</th>
-              <th class="text-left px-4 py-3">Nome</th>
-              <th class="text-left px-4 py-3">Canal</th>
-              <th class="text-left px-4 py-3">Campanha</th>
-              <th class="text-left px-4 py-3">Contato</th>
-              <th class="text-left px-4 py-3">Endereço</th>
-              <th class="text-left px-4 py-3">Régua</th>
-              <th class="text-left px-4 py-3">Data</th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="ID">
+                <div class="flex items-center gap-1">ID <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="Razão">
+                <div class="flex items-center gap-1">Razão <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="Telefone">
+                <div class="flex items-center gap-1">Contato <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="Descrição">
+                <div class="flex items-center gap-1">Perdemos <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="Endereço">
+                <div class="flex items-center gap-1">Endereço <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
+              <th class="px-3 py-2 border-b border-theme-border cursor-pointer hover:text-theme-textMain select-none transition-colors" data-sort="Data perdemos">
+                <div class="flex items-center gap-1">Data Perdemos <span class="sort-icon text-[9px] text-theme-textMuted">↕</span></div>
+              </th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
-      <div id="empty" class="hidden p-10 text-center opacity-60">Nenhum cliente encontrado.</div>
+      <div id="empty" class="p-6 text-center text-theme-textMuted text-xs">Nenhum cliente encontrado.</div>
     </section>
   </main>
 
-  <div id="toast" class="toast fixed bottom-5 right-5 bg-[#110D09] text-white px-4 py-3 rounded-xl shadow-custom text-sm font-semibold">
-    Copiado!
-  </div>
+  <div id="toast" class="fixed bottom-4 right-4 bg-brand text-white px-3 py-2 rounded text-xs shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none"></div>
 
-<script>
-const offsets = [3,7,30,90,360];
-let rows = [];
-const $ = id => document.getElementById(id);
-
-function parseCSV(text){
-  const lines = text.replace(/\r/g,'').split('\n').filter(x=>x.trim());
-  if(!lines.length) return [];
-  const sep = (lines[0].match(/;/g)||[]).length > (lines[0].match(/,/g)||[]).length ? ';' : ',';
-  const parseLine = line => {
-    const out=[]; let cur='', quoted=false;
-    for(let i=0;i<line.length;i++){
-      const c=line[i];
-      if(c === '"'){
-        if(quoted && line[i+1] === '"'){cur+='"';i++} else quoted=!quoted;
-      } else if(c===sep && !quoted){out.push(cur.trim());cur='';}
-      else cur+=c;
-    }
-    out.push(cur.trim()); return out;
-  };
-  const headers=parseLine(lines[0]).map(h=>h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_'));
-  return lines.slice(1).map(line=>{
-    const vals=parseLine(line), obj={};
-    headers.forEach((h,i)=>obj[h]=vals[i]??'');
-    return obj;
-  });
-}
-
-function dateFromInput(v){
-  if(!v) return null;
-  const [y,m,d]=v.split('-').map(Number);
-  return new Date(y,m-1,d);
-}
-function addDays(date,n){const d=new Date(date);d.setDate(d.getDate()+n);return d}
-function fmt(d){return d.toLocaleDateString('pt-BR')}
-function isoToday(){return new Date().toISOString().slice(0,10)}
-
-function getBaseDate(){
-  return dateFromInput($('baseDate').value) || new Date();
-}
-function dueInfo(base){
-  const today=new Date(); today.setHours(0,0,0,0);
-  let current=null, next=null;
-  offsets.forEach(n=>{
-    const d=addDays(base,n);
-    if(d<=today) current=n;
-    if(!next && d>today) next=n;
-  });
-  return {current,next};
-}
-function rebuildFilters(){
-  const ch=[...new Set(rows.map(r=>r.canal_de_venda||r.canal||'').filter(Boolean))].sort();
-  const ca=[...new Set(rows.map(r=>r.campanha||'').filter(Boolean))].sort();
-  $('channelFilter').innerHTML='<option value="">Todos</option>'+ch.map(x=>`<option>${esc(x)}</option>`).join('');
-  $('campaignFilter').innerHTML='<option value="">Todas</option>'+ca.map(x=>`<option>${esc(x)}</option>`).join('');
-}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
-
-function filtered(){
-  const ch=$('channelFilter').value, ca=$('campaignFilter').value, q=$('search').value.toLowerCase();
-  return rows.filter(r=>{
-    const channel=r.canal_de_venda||r.canal||'';
-    const campaign=r.campanha||'';
-    const hay=[r.id,r.nome,r.contato].join(' ').toLowerCase();
-    return (!ch||channel===ch)&&(!ca||campaign===ca)&&(!q||hay.includes(q));
-  });
-}
-function renderKPIs(){
-  const base=getBaseDate();
-  $('kpis').innerHTML=offsets.map(n=>{
-    const target=addDays(base,n), today=new Date(); today.setHours(0,0,0,0);
-    const count=filtered().filter(()=>target.getTime()===today.getTime()).length;
-    const past=target<today;
-    return `<button class="kpi text-white rounded-2xl p-4 text-left shadow-custom ${past?'opacity-75':''}" onclick="setOffset(${n})">
-      <div class="text-xs opacity-60">D+${n}</div>
-      <div class="text-2xl font-bold mt-1">${count}</div>
-      <div class="text-xs opacity-55 mt-1">${fmt(target)}</div>
-    </button>`;
-  }).join('');
-}
-function render(){
-  renderKPIs();
-  const base=getBaseDate(), list=filtered();
-  const today=new Date(); today.setHours(0,0,0,0);
-  const due=list.filter(r=>offsets.some(n=>addDays(base,n).getTime()===today.getTime()));
-  $('summary').textContent=`${due.length} cliente(s) com contato previsto para hoje · ${list.length} na base filtrada`;
-  const body=$('tableBody'); body.innerHTML='';
-  $('empty').classList.toggle('hidden',due.length>0);
-  due.forEach(r=>{
-    const info=dueInfo(base), channel=r.canal_de_venda||r.canal||'';
-    const target=offsets.find(n=>addDays(base,n).getTime()===today.getTime());
-    const tr=document.createElement('tr'); tr.className='border-b border-[#DED4C8] hover:bg-[#eee7de]';
-    tr.innerHTML=`
-      <td class="px-4 py-3"><button class="copyable bg-[#E7DED3] rounded-md px-3 py-2" title="Copiar nome e telefone" data-copy="${esc((r.nome||'')+'\\n'+(r.contato||''))}">📋</button></td>
-      <td class="px-4 py-3 font-semibold copyable" data-copy="${esc(r.nome||'')}" title="Clique para copiar">${esc(r.nome||'-')}</td>
-      <td class="px-4 py-3">${esc(channel||'-')}</td>
-      <td class="px-4 py-3">${esc(r.campanha||'-')}</td>
-      <td class="px-4 py-3 copyable" data-copy="${esc(r.contato||'')}" title="Clique para copiar">${esc(r.contato||'-')}</td>
-      <td class="px-4 py-3">${esc(r.endereco||'-')}</td>
-      <td class="px-4 py-3 font-bold">D+${target}</td>
-      <td class="px-4 py-3">${fmt(target?addDays(base,target):base)}</td>`;
-    body.appendChild(tr);
-  });
-}
-function setOffset(n){
-  const base=getBaseDate();
-  const d=addDays(base,n);
-  const [y,m,day]=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')];
-  $('search').value='';
-  render();
-}
-function toast(){
-  $('toast').classList.add('show');
-  clearTimeout(window.tt); window.tt=setTimeout(()=>$('toast').classList.remove('show'),1200);
-}
-
-$('csvFile').addEventListener('change',e=>{
-  const file=e.target.files[0]; if(!file)return;
-  const reader=new FileReader();
-  reader.onload=ev=>{rows=parseCSV(ev.target.result); rebuildFilters(); render();};
-  reader.readAsText(file,'UTF-8');
-});
-$('baseDate').value=isoToday();
-['baseDate','channelFilter','campaignFilter','search'].forEach(id=>$(id).addEventListener('input',render));
-$('clearBtn').addEventListener('click',()=>{rows=[];$('csvFile').value='';rebuildFilters();render()});
-document.addEventListener('click',e=>{
-  const el=e.target.closest('[data-copy]'); if(!el)return;
-  navigator.clipboard.writeText(el.dataset.copy).then(toast);
-});
-render();
-</script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
