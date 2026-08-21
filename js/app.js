@@ -1,25 +1,41 @@
 import { parseCSV } from './csv.js';
 import { populateSelectOptions, filterData, resetAllFilters } from './filters.js';
-import { updateKPICounts } from './regua.js';
+import { updateKPICounts, getEffectiveDateStr } from './regua.js';
 import { renderTable } from './table.js';
 import { calculateClientScore } from './score.js';
 
 let rawData = [];
 let currentStage = null;
-let currentSort = { column: 'Score', direction: 'desc' }; // Padrão: Ordenar por maior Score
+let currentSort = { column: 'Score', direction: 'desc' };
 
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
 });
 
 function setupEventListeners() {
-  // Importação do arquivo CSV
+  // Importação de arquivo CSV
   const csvFileInput = document.getElementById('csvFile');
   if (csvFileInput) {
     csvFileInput.addEventListener('change', handleCSVImport);
   }
 
-  // Botão Limpar Tudo
+  // Busca textual
+  const searchInput = document.getElementById('search');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      applyFiltersAndRender();
+    });
+  }
+
+  // Faixa de Score
+  const scoreRangeSelect = document.getElementById('scoreRange');
+  if (scoreRangeSelect) {
+    scoreRangeSelect.addEventListener('change', () => {
+      applyFiltersAndRender();
+    });
+  }
+
+  // Botão Limpar Filtros
   const clearBtn = document.getElementById('clearBtn');
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
@@ -30,7 +46,7 @@ function setupEventListeners() {
     });
   }
 
-  // Cards da Régua (KPIs D+3, D+7, etc.)
+  // Cards da Régua KPI
   const kpiCards = document.querySelectorAll('.kpi-card');
   kpiCards.forEach(card => {
     card.addEventListener('click', () => {
@@ -41,7 +57,7 @@ function setupEventListeners() {
     });
   });
 
-  // Ordenação de colunas da tabela
+  // Ordenação nas colunas da Tabela
   const headers = document.querySelectorAll('th[data-sort]');
   headers.forEach(header => {
     header.addEventListener('click', () => {
@@ -63,13 +79,11 @@ function handleCSVImport(event) {
   if (!file) return;
 
   parseCSV(file, (data) => {
-    // Enriquece cada cliente com o cálculo do Score
     rawData = data.map(item => {
       item._score = calculateClientScore(item);
       return item;
     });
 
-    // Preenche opções nos selects/checkboxes e associa o callback de atualização
     populateSelectOptions(rawData, () => {
       applyFiltersAndRender();
     });
@@ -81,13 +95,8 @@ function handleCSVImport(event) {
 }
 
 function applyFiltersAndRender() {
-  // 1. Aplica filtros acumulados
   let filtered = filterData(rawData, currentStage);
-
-  // 2. Aplica ordenação ativa
   filtered = sortData(filtered, currentSort.column, currentSort.direction);
-
-  // 3. Renderiza a tabela
   renderTable(filtered, handleCopyField);
 }
 
@@ -114,8 +123,10 @@ function sortData(data, column, direction) {
       valA = (a['Endereço'] || a['Endereco'] || '').toLowerCase();
       valB = (b['Endereço'] || b['Endereco'] || '').toLowerCase();
     } else if (column === 'Data perdemos') {
-      valA = parseDateToTimestamp(a['Data perdemos'] || a['Data']);
-      valB = parseDateToTimestamp(b['Data perdemos'] || b['Data']);
+      const dateA = getEffectiveDateStr ? getEffectiveDateStr(a) : '';
+      const dateB = getEffectiveDateStr ? getEffectiveDateStr(b) : '';
+      valA = parseDateToTimestamp(dateA);
+      valB = parseDateToTimestamp(dateB);
     } else {
       return 0;
     }
@@ -127,7 +138,7 @@ function sortData(data, column, direction) {
 }
 
 function parseDateToTimestamp(dateStr) {
-  if (!dateStr) return 0;
+  if (!dateStr || dateStr === '00/00/0000') return 0;
   const parts = dateStr.trim().split('/');
   if (parts.length !== 3) return 0;
   return new Date(parts[2], parts[1] - 1, parts[0]).getTime();

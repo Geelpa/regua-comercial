@@ -1,376 +1,351 @@
-import { getDaysDiff, getStageBucket } from "./regua.js";
-import { calculateClientScore, isScoreInRange } from "./score.js";
+import { calculateClientScore, isScoreInRange } from './score.js';
+import { getDaysDiff, getStageBucket, getEffectiveDateStr } from './regua.js';
 
-const channelGroup = document.getElementById("channelGroup");
-const campaignGroup = document.getElementById("campaignGroup");
-const descriptionGroup = document.getElementById("descriptionGroup");
-const yearGroup = document.getElementById("yearGroup");
-
-const channelTags = document.getElementById("channelTags");
-const campaignTags = document.getElementById("campaignTags");
-const descriptionTags = document.getElementById("descriptionTags");
-const yearTags = document.getElementById("yearTags");
-
-const searchChannel = document.getElementById("searchChannel");
-const searchCampaign = document.getElementById("searchCampaign");
-const searchDescription = document.getElementById("searchDescription");
-const searchYear = document.getElementById("searchYear");
-
-const state = {
-  channels: { all: new Set(), selected: new Set(), query: "" },
-  campaigns: { all: new Set(), selected: new Set(), query: "" },
-  descriptions: { all: new Set(), selected: new Set(), query: "" },
-  years: { all: new Set(), selected: new Set(), query: "" },
+// Estado global dos filtros
+export const state = {
+  years: { selected: new Set(), options: [] },
+  channels: { selected: new Set(), options: [] },
+  campaigns: { selected: new Set(), options: [] },
+  descriptions: { selected: new Set(), options: [] }
 };
 
-let onFilterChangeCallback = null;
+let currentOnFilterChange = null;
 
-// Busca valor no objeto testando variações de nome de coluna
-function getFieldValue(item, ...possibleKeys) {
-  if (!item) return "";
-  for (const key of possibleKeys) {
-    if (item[key] !== undefined && item[key] !== null) return String(item[key]);
-    // Checa sem diferenciar maiúsculas/minúsculas e espaços
-    const foundKey = Object.keys(item).find(
-      (k) => k.trim().toLowerCase() === key.toLowerCase(),
-    );
-    if (foundKey && item[foundKey] !== undefined && item[foundKey] !== null) {
-      return String(item[foundKey]);
-    }
-  }
-  return "";
-}
-
-function normalizeText(str) {
-  if (!str) return "";
-  return str
+/**
+ * Normaliza textos (remove acentos, caixa alta e espaços sobressalentes)
+ */
+function normalizeText(text) {
+  if (text === null || text === undefined) return '';
+  return text
     .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .trim();
 }
 
+/**
+ * Busca valor em múltiplas chaves de coluna do CSV
+ */
+function getFieldValue(item, ...candidates) {
+  if (!item || typeof item !== 'object') return '';
+  const itemKeys = Object.keys(item);
+
+  for (const candidate of candidates) {
+    const normCand = normalizeText(candidate);
+
+    for (const key of itemKeys) {
+      const cleanKey = key.replace(/^\ufeff/, '').trim();
+      if (normalizeText(cleanKey) === normCand) {
+        const val = item[key];
+        if (val !== undefined && val !== null && val !== '') {
+          return val.toString().trim();
+        }
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Obtém a data efetiva para cálculo e filtro de ano
+ */
+function safeGetEffectiveDateStr(item) {
+  let dateStr = '';
+  if (typeof getEffectiveDateStr === 'function') {
+    dateStr = getEffectiveDateStr(item);
+  }
+
+  if (!dateStr || dateStr === '00/00/0000' || dateStr === '-') {
+    const perdemos = getFieldValue(item, 'Data perdemos', 'Data Perdemos', 'DataPerdemos');
+    if (perdemos && perdemos !== '00/00/0000' && perdemos !== '-') {
+      dateStr = perdemos;
+    } else {
+      dateStr = getFieldValue(item, 'Data cadastro', 'Data Cadastro') || '';
+    }
+  }
+  return dateStr;
+}
+
+/**
+ * Extrai o ano de 4 dígitos
+ */
 function extractYear(dateStr) {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const parts = dateStr.trim().split("/");
-  if (parts.length === 3) {
-    const year = parts[2].trim();
-    if (year.length === 4 && !isNaN(year)) return year;
-  }
-  return null;
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.trim() === '00/00/0000') return null;
+  const match = dateStr.match(/\b(19\d{2}|20\d{2})\b/);
+  return match ? match[1] : null;
 }
 
-function setupInternalSearch() {
-  const bindSearch = (input, categoryState) => {
-    if (!input) return;
-    input.oninput = (e) => {
-      categoryState.query = e.target.value.toLowerCase().trim();
-      renderAllGroups();
-    };
-    input.onfocus = () => {
-      renderAllGroups();
-    };
-  };
+/**
+ * Renderiza checkboxes dentro de um grupo específico
+ */
+function renderCheckboxes(groupKey, containerId, searchTerm = '') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
 
-  bindSearch(searchChannel, state.channels);
-  bindSearch(searchCampaign, state.campaigns);
-  bindSearch(searchDescription, state.descriptions);
-  bindSearch(searchYear, state.years);
-}
+  container.innerHTML = '';
+  const normSearch = normalizeText(searchTerm);
 
-function renderAllGroups() {
-  renderCheckboxGroup(
-    channelGroup,
-    channelTags,
-    state.channels,
-    "clearChannels",
+  const filteredOptions = state[groupKey].options.filter(opt =>
+    normalizeText(opt).includes(normSearch)
   );
-  renderCheckboxGroup(
-    campaignGroup,
-    campaignTags,
-    state.campaigns,
-    "clearCampaigns",
-  );
-  renderCheckboxGroup(
-    descriptionGroup,
-    descriptionTags,
-    state.descriptions,
-    "clearDescriptions",
-  );
-  renderCheckboxGroup(yearGroup, yearTags, state.years, "clearYears");
-}
 
-function renderCheckboxGroup(
-  listContainer,
-  tagsContainer,
-  categoryState,
-  clearBtnId,
-) {
-  if (!listContainer) return;
-  listContainer.innerHTML = "";
-  if (tagsContainer) tagsContainer.innerHTML = "";
-
-  const query = categoryState.query;
-  const selectedList = Array.from(categoryState.selected).sort();
-
-  const clearBtn = document.getElementById(clearBtnId);
-  if (clearBtn) {
-    clearBtn.classList.toggle("hidden", categoryState.selected.size === 0);
+  if (filteredOptions.length === 0) {
+    container.innerHTML = '<span class="text-[11px] text-theme-textMuted p-1 block">Nenhum item encontrado</span>';
+    return;
   }
 
-  if (tagsContainer && selectedList.length > 0) {
-    selectedList.forEach((val) => {
-      const tag = document.createElement("span");
-      tag.className =
-        "inline-flex items-center gap-1 bg-brand/15 text-brand border border-brand/30 px-2 py-0.5 rounded-full text-[10px] font-medium leading-tight";
+  filteredOptions.forEach(optionValue => {
+    const label = document.createElement('label');
+    label.className = 'flex items-center gap-2 text-[11px] text-theme-textMain cursor-pointer select-none hover:text-brand transition-colors py-0.5 px-1 rounded hover:bg-theme-hover';
 
-      const textSpan = document.createElement("span");
-      textSpan.textContent = val;
-      textSpan.className = "truncate max-w-[120px]";
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = optionValue;
+    checkbox.checked = state[groupKey].selected.has(optionValue);
+    checkbox.className = 'rounded border-theme-border bg-theme-input text-brand focus:ring-brand h-3.5 w-3.5 cursor-pointer';
 
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.className =
-        "hover:bg-brand/30 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold text-[11px] leading-none transition-colors text-brand ml-0.5 cursor-pointer";
+    checkbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        state[groupKey].selected.add(optionValue);
+      } else {
+        state[groupKey].selected.delete(optionValue);
+      }
+      updateGroupUI(groupKey);
+      if (typeof currentOnFilterChange === 'function') {
+        currentOnFilterChange();
+      }
+    });
 
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        categoryState.selected.delete(val);
-        renderAllGroups();
-        if (onFilterChangeCallback) onFilterChangeCallback();
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(optionValue));
+    container.appendChild(label);
+  });
+}
+
+/**
+ * Atualiza Tags e Botão Limpar do Grupo
+ */
+function updateGroupUI(groupKey) {
+  const config = {
+    years: { tagsId: 'yearTags', clearBtnId: 'clearYears' },
+    channels: { tagsId: 'channelTags', clearBtnId: 'clearChannels' },
+    campaigns: { tagsId: 'campaignTags', clearBtnId: 'clearCampaigns' },
+    descriptions: { tagsId: 'descriptionTags', clearBtnId: 'clearDescriptions' }
+  }[groupKey];
+
+  if (!config) return;
+
+  // Renderizar Tags
+  const tagsContainer = document.getElementById(config.tagsId);
+  if (tagsContainer) {
+    tagsContainer.innerHTML = '';
+    state[groupKey].selected.forEach(val => {
+      const tag = document.createElement('span');
+      tag.className = 'inline-flex items-center gap-1 bg-brand/20 text-brand border border-brand/30 px-1.5 py-0.5 rounded text-[10px] font-medium';
+      tag.innerHTML = `${val} <button type="button" class="hover:text-white font-bold">&times;</button>`;
+      
+      tag.querySelector('button').addEventListener('click', () => {
+        state[groupKey].selected.delete(val);
+        const groupContainerId = {
+          years: 'yearGroup',
+          channels: 'channelGroup',
+          campaigns: 'campaignGroup',
+          descriptions: 'descriptionGroup'
+        }[groupKey];
+        
+        renderCheckboxes(groupKey, groupContainerId);
+        updateGroupUI(groupKey);
+        if (typeof currentOnFilterChange === 'function') currentOnFilterChange();
       });
 
-      tag.appendChild(textSpan);
-      tag.appendChild(removeBtn);
       tagsContainer.appendChild(tag);
     });
   }
 
-  const optionsList = Array.from(categoryState.all)
-    .filter(
-      (val) =>
-        !categoryState.selected.has(val) && val.toLowerCase().includes(query),
-    )
-    .sort();
-
-  if (optionsList.length === 0) {
-    listContainer.innerHTML = `<span class="text-theme-textMuted italic p-1 block text-[10px]">Nenhuma opção disponível</span>`;
-    return;
-  }
-
-  optionsList.forEach((val) => {
-    listContainer.appendChild(createCheckboxItem(val, categoryState));
-  });
-}
-
-function createCheckboxItem(value, categoryState) {
-  const label = document.createElement("label");
-  label.className =
-    "flex items-center gap-2 p-1 rounded cursor-pointer transition-colors text-theme-textMuted hover:bg-theme-hover hover:text-theme-textMain text-xs";
-
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  checkbox.checked = false;
-  checkbox.className = "accent-brand rounded cursor-pointer w-3.5 h-3.5";
-
-  checkbox.addEventListener("change", () => {
-    if (checkbox.checked) {
-      categoryState.selected.add(value);
-      categoryState.query = "";
-      resetSearchInput(categoryState);
+  // Exibir/Ocultar Botão Limpar
+  const clearBtn = document.getElementById(config.clearBtnId);
+  if (clearBtn) {
+    if (state[groupKey].selected.size > 0) {
+      clearBtn.classList.remove('hidden');
+    } else {
+      clearBtn.classList.add('hidden');
     }
-    renderAllGroups();
-    if (onFilterChangeCallback) onFilterChangeCallback();
+  }
+}
+
+/**
+ * Configura os ouvintes de busca e ações nos filtros
+ */
+function setupFilterControls() {
+  const mappings = [
+    { key: 'years', group: 'yearGroup', search: 'searchYear', selectAll: 'selectAllYears', clear: 'clearYears' },
+    { key: 'channels', group: 'channelGroup', search: 'searchChannel', selectAll: 'selectAllChannels', clear: 'clearChannels' },
+    { key: 'campaigns', group: 'campaignGroup', search: 'searchCampaign', selectAll: 'selectAllCampaigns', clear: 'clearCampaigns' },
+    { key: 'descriptions', group: 'descriptionGroup', search: 'searchDescription', selectAll: 'selectAllDescriptions', clear: 'clearDescriptions' }
+  ];
+
+  mappings.forEach(({ key, group, search, selectAll, clear }) => {
+    // Input de busca interna do grupo
+    const searchEl = document.getElementById(search);
+    if (searchEl && !searchEl.dataset.bound) {
+      searchEl.dataset.bound = 'true';
+      searchEl.addEventListener('input', (e) => {
+        renderCheckboxes(key, group, e.target.value);
+      });
+    }
+
+    // Botão Selecionar Todos
+    const selectAllEl = document.getElementById(selectAll);
+    if (selectAllEl && !selectAllEl.dataset.bound) {
+      selectAllEl.dataset.bound = 'true';
+      selectAllEl.addEventListener('click', () => {
+        state[key].options.forEach(opt => state[key].selected.add(opt));
+        renderCheckboxes(key, group, searchEl ? searchEl.value : '');
+        updateGroupUI(key);
+        if (typeof currentOnFilterChange === 'function') currentOnFilterChange();
+      });
+    }
+
+    // Botão Limpar Grupo
+    const clearEl = document.getElementById(clear);
+    if (clearEl && !clearEl.dataset.bound) {
+      clearEl.dataset.bound = 'true';
+      clearEl.addEventListener('click', () => {
+        state[key].selected.clear();
+        renderCheckboxes(key, group, searchEl ? searchEl.value : '');
+        updateGroupUI(key);
+        if (typeof currentOnFilterChange === 'function') currentOnFilterChange();
+      });
+    }
+  });
+}
+
+/**
+ * Extrai opções do CSV e popula as listas na tela
+ */
+export function populateSelectOptions(data, onFilterChange) {
+  if (onFilterChange) currentOnFilterChange = onFilterChange;
+
+  const yearsSet = new Set();
+  const channelsSet = new Set();
+  const campaignsSet = new Set();
+  const descriptionsSet = new Set();
+
+  data.forEach(item => {
+    const effectiveDate = safeGetEffectiveDateStr(item);
+    const year = extractYear(effectiveDate);
+    if (year) yearsSet.add(year);
+
+    const channel = getFieldValue(item, 'Canal', 'Channel', 'Origem', 'Midia');
+    if (channel) channelsSet.add(channel);
+
+    const campaign = getFieldValue(item, 'Campanha', 'Campaign');
+    if (campaign) campaignsSet.add(campaign);
+
+    const rawDesc = getFieldValue(item, 'Descrição', 'Descricao', 'Motivo', 'Reason');
+    if (rawDesc) {
+      const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '').trim();
+      if (cleanDesc) descriptionsSet.add(cleanDesc);
+    }
   });
 
-  const span = document.createElement("span");
-  span.textContent = value;
-  span.className = "truncate";
+  state.years.options = Array.from(yearsSet).sort().reverse();
+  state.channels.options = Array.from(channelsSet).sort();
+  state.campaigns.options = Array.from(campaignsSet).sort();
+  state.descriptions.options = Array.from(descriptionsSet).sort();
 
-  label.appendChild(checkbox);
-  label.appendChild(span);
-  return label;
+  setupFilterControls();
+
+  renderCheckboxes('years', 'yearGroup');
+  renderCheckboxes('channels', 'channelGroup');
+  renderCheckboxes('campaigns', 'campaignGroup');
+  renderCheckboxes('descriptions', 'descriptionGroup');
+
+  updateGroupUI('years');
+  updateGroupUI('channels');
+  updateGroupUI('campaigns');
+  updateGroupUI('descriptions');
 }
 
-function resetSearchInput(categoryState) {
-  if (categoryState === state.channels && searchChannel)
-    searchChannel.value = "";
-  if (categoryState === state.campaigns && searchCampaign)
-    searchCampaign.value = "";
-  if (categoryState === state.descriptions && searchDescription)
-    searchDescription.value = "";
-  if (categoryState === state.years && searchYear) searchYear.value = "";
+/**
+ * Aplica a filtragem nos dados do CSV
+ */
+export function filterData(data, activeStage = null) {
+  const searchEl = document.getElementById('search');
+  const scoreRangeEl = document.getElementById('scoreRange');
+  const selectedScoreRange = scoreRangeEl ? scoreRangeEl.value : 'all';
+
+  const rawTerm = searchEl ? searchEl.value : '';
+  const normalizedTerm = normalizeText(rawTerm);
+  const searchTokens = normalizedTerm.split(' ').filter(Boolean);
+
+  return data.filter(item => {
+    const clientScore = item._score !== undefined ? item._score : calculateClientScore(item);
+    item._score = clientScore;
+
+    // 1. Filtro de Score
+    if (!isScoreInRange(clientScore, selectedScoreRange)) return false;
+
+    const effectiveDate = safeGetEffectiveDateStr(item);
+    const itemYear = extractYear(effectiveDate);
+
+    const id = getFieldValue(item, 'ID', 'Id');
+    const name = getFieldValue(item, 'Razão', 'Razao', 'Nome');
+    const street = getFieldValue(item, 'Endereço', 'Endereco', 'Rua');
+    const number = getFieldValue(item, 'Número', 'Numero', 'Num');
+    const phone = getFieldValue(item, 'Telefone', 'Contato');
+
+    const rawDesc = getFieldValue(item, 'Descrição', 'Descricao', 'Motivo');
+    const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '').trim();
+    const channel = getFieldValue(item, 'Canal', 'Channel', 'Origem');
+    const campaign = getFieldValue(item, 'Campanha', 'Campaign');
+
+    // 2. Busca Geral Textual
+    const searchableText = normalizeText(`${id} ${name} ${street} ${number} ${phone} ${cleanDesc} ${channel} ${campaign}`);
+    const matchesSearch = searchTokens.length === 0 || searchTokens.every(token => searchableText.includes(token));
+
+    // 3. Filtros das caixas de seleção
+    const matchesChannel = state.channels.selected.size === 0 || state.channels.selected.has(channel);
+    const matchesCampaign = state.campaigns.selected.size === 0 || state.campaigns.selected.has(campaign);
+    const matchesDesc = state.descriptions.selected.size === 0 || state.descriptions.selected.has(cleanDesc) || state.descriptions.selected.has(rawDesc);
+    const matchesYear = state.years.selected.size === 0 || (itemYear && state.years.selected.has(itemYear));
+
+    // 4. Régua KPI
+    let matchesStage = true;
+    if (activeStage !== null && activeStage !== undefined) {
+      const days = getDaysDiff(effectiveDate);
+      matchesStage = (getStageBucket(days) === activeStage);
+    }
+
+    return matchesSearch && matchesChannel && matchesCampaign && matchesDesc && matchesYear && matchesStage;
+  });
 }
 
-function setupClearButtons() {
-  const bindClear = (btnId, categoryState) => {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    btn.onclick = () => {
-      categoryState.selected.clear();
-      categoryState.query = "";
-      resetSearchInput(categoryState);
-      renderAllGroups();
-      if (onFilterChangeCallback) onFilterChangeCallback();
-    };
-  };
-
-  bindClear("clearChannels", state.channels);
-  bindClear("clearCampaigns", state.campaigns);
-  bindClear("clearDescriptions", state.descriptions);
-  bindClear("clearYears", state.years);
-}
-
+/**
+ * Reseta todos os filtros
+ */
 export function resetAllFilters() {
+  state.years.selected.clear();
   state.channels.selected.clear();
   state.campaigns.selected.clear();
   state.descriptions.selected.clear();
-  state.years.selected.clear();
 
-  state.channels.query =
-    state.campaigns.query =
-    state.descriptions.query =
-    state.years.query =
-      "";
-
-  if (searchChannel) searchChannel.value = "";
-  if (searchCampaign) searchCampaign.value = "";
-  if (searchDescription) searchDescription.value = "";
-  if (searchYear) searchYear.value = "";
-
-  renderAllGroups();
-}
-
-// No início da função filterData, capture o valor selecionado no select de faixa:
-export function filterData(data, activeStage = null) {
-  const searchEl = document.getElementById("search");
-  const scoreRangeEl = document.getElementById("scoreRange");
-  if (scoreRangeEl) {
-    scoreRangeEl.addEventListener("change", () => {
-      if (onFilterChangeCallback) onFilterChangeCallback();
-    });
-  }
-  const selectedScoreRange = scoreRangeEl ? scoreRangeEl.value : "all";
-
-  const rawTerm = searchEl ? searchEl.value : "";
-  const normalizedTerm = normalizeText(rawTerm);
-  const searchTokens = normalizedTerm.split(" ").filter(Boolean);
-
-  return data.filter((item) => {
-    // Calcula o score individual do cliente
-    const clientScore = calculateClientScore(item);
-    item._score = clientScore; // Salva para uso na tabela e ordenação
-
-    // Checa a faixa do score
-    const matchesScore = isScoreInRange(clientScore, selectedScoreRange);
-    if (!matchesScore) return false;
-
-    const id = getFieldValue(item, "ID", "Id");
-    const name = getFieldValue(item, "Razão", "Razao", "Nome");
-    const address = getFieldValue(
-      item,
-      "Endereço",
-      "Endereco",
-      "Rua",
-      "Logradouro",
-    );
-    const number = getFieldValue(item, "Número", "Numero", "Numeral", "Num");
-
-    const rawDesc = getFieldValue(item, "Descrição", "Descricao");
-    const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, "");
-    const dateStr = getFieldValue(item, "Data perdemos", "Data");
-    const itemYear = extractYear(dateStr);
-    const channel = getFieldValue(item, "Canal");
-    const campaign = getFieldValue(item, "Campanha");
-
-    const searchableText = normalizeText(`${id} ${name} ${address} ${number}`);
-    const matchesSearch =
-      searchTokens.length === 0 ||
-      searchTokens.every((token) => searchableText.includes(token));
-
-    const matchesChannel =
-      state.channels.selected.size === 0 ||
-      state.channels.selected.has(channel);
-    const matchesCampaign =
-      state.campaigns.selected.size === 0 ||
-      state.campaigns.selected.has(campaign);
-    const matchesDesc =
-      state.descriptions.selected.size === 0 ||
-      state.descriptions.selected.has(cleanDesc) ||
-      state.descriptions.selected.has(rawDesc);
-    const matchesYear =
-      state.years.selected.size === 0 ||
-      (itemYear && state.years.selected.has(itemYear));
-
-    let matchesStage = true;
-    if (activeStage !== null) {
-      matchesStage = getStageBucket(getDaysDiff(dateStr)) === activeStage;
-    }
-
-    return (
-      matchesSearch &&
-      matchesChannel &&
-      matchesCampaign &&
-      matchesDesc &&
-      matchesYear &&
-      matchesStage
-    );
-  });
-}
-
-// Adicione esta nova função no arquivo js/filters.js
-function setupSelectAllButtons() {
-  const bindSelectAll = (btnId, categoryState) => {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-
-    btn.onclick = () => {
-      // Adiciona todas as opções disponíveis ao Set de selecionados
-      categoryState.all.forEach((val) => categoryState.selected.add(val));
-      categoryState.query = "";
-      resetSearchInput(categoryState);
-      renderAllGroups();
-      if (onFilterChangeCallback) onFilterChangeCallback();
-    };
-  };
-
-  bindSelectAll("selectAllChannels", state.channels);
-  bindSelectAll("selectAllCampaigns", state.campaigns);
-  bindSelectAll("selectAllDescriptions", state.descriptions);
-  bindSelectAll("selectAllYears", state.years);
-}
-
-// Dentro da função populateSelectOptions já existente, adicione a chamada do setupSelectAllButtons:
-export function populateSelectOptions(data, onChange) {
-  onFilterChangeCallback = onChange;
-
-  state.channels.all.clear();
-  state.campaigns.all.clear();
-  state.descriptions.all.clear();
-  state.years.all.clear();
-
-  data.forEach((item) => {
-    const canal = getFieldValue(item, "Canal");
-    const campanha = getFieldValue(item, "Campanha");
-    const desc = getFieldValue(item, "Descrição", "Descricao");
-    const dateStr = getFieldValue(item, "Data perdemos", "Data");
-
-    if (canal) state.channels.all.add(canal);
-    if (campanha) state.campaigns.all.add(campanha);
-    if (desc) {
-      const cleanDesc = desc.replace(/^perdemos\s*-\s*/i, "");
-      state.descriptions.all.add(cleanDesc);
-    }
-    const year = extractYear(dateStr);
-    if (year) state.years.all.add(year);
+  ['searchYear', 'searchChannel', 'searchCampaign', 'searchDescription', 'search'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
   });
 
-  setupInternalSearch();
-  setupSelectAllButtons(); // <-- Adicionado aqui
-  renderAllGroups();
-  setupClearButtons();
+  const scoreRangeEl = document.getElementById('scoreRange');
+  if (scoreRangeEl) scoreRangeEl.value = 'all';
+
+  renderCheckboxes('years', 'yearGroup');
+  renderCheckboxes('channels', 'channelGroup');
+  renderCheckboxes('campaigns', 'campaignGroup');
+  renderCheckboxes('descriptions', 'descriptionGroup');
+
+  updateGroupUI('years');
+  updateGroupUI('channels');
+  updateGroupUI('campaigns');
+  updateGroupUI('descriptions');
 }

@@ -1,4 +1,4 @@
-import { getDaysDiff } from './regua.js';
+import { getDaysDiff, getEffectiveDateStr } from './regua.js';
 
 // Tabela de pontuações das opções
 const SCORE_CONFIG = {
@@ -13,8 +13,8 @@ const SCORE_CONFIG = {
     { maxDias: 7, score: 90 },
     { maxDias: 30, score: 75 },
     { maxDias: 90, score: 50 },
-    { maxDias: 360, score: 30 },
-    { maxDias: Infinity, score: 10 }
+    { maxDias: 360, score: 40 },
+    { maxDias: Infinity, score: 20 }
   ],
   canais: {
     'outbound': 30,
@@ -47,11 +47,12 @@ export function calculateClientScore(item) {
     scoreMotivo = SCORE_CONFIG.motivos[cleanDesc] ?? SCORE_CONFIG.motivos['default'];
   }
 
-  // 2. Tempo desde o 'perdemos' (Peso 35%)
-  const dataPerdemosStr = item['Data perdemos'] || item['Data'] || '';
+  // 2. Tempo (Data Perdemos com fallback para Data Cadastro) (Peso 35%)
+  const effectiveDateStr = getEffectiveDateStr(item);
   let scoreTempo = MIN_SCORES.tempo;
-  if (dataPerdemosStr.trim()) {
-    const dias = getDaysDiff(dataPerdemosStr);
+  
+  if (effectiveDateStr) {
+    const dias = getDaysDiff(effectiveDateStr);
     if (dias >= 0) {
       const faixa = SCORE_CONFIG.diasPerdido.find(f => dias <= f.maxDias);
       if (faixa) scoreTempo = faixa.score;
@@ -72,7 +73,6 @@ export function calculateClientScore(item) {
     scoreCampanha = SCORE_CONFIG.campanhas[campanha] ?? SCORE_CONFIG.campanhas['default'];
   }
 
-  // Média ponderada com 100% dos pesos ativados
   const total = Math.round(
     (scoreMotivo * 0.35) +
     (scoreTempo * 0.35) +
