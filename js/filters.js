@@ -10,7 +10,6 @@ const campaignTags = document.getElementById('campaignTags');
 const descriptionTags = document.getElementById('descriptionTags');
 const yearTags = document.getElementById('yearTags');
 
-const searchInput = document.getElementById('search');
 const searchChannel = document.getElementById('searchChannel');
 const searchCampaign = document.getElementById('searchCampaign');
 const searchDescription = document.getElementById('searchDescription');
@@ -24,6 +23,32 @@ const state = {
 };
 
 let onFilterChangeCallback = null;
+
+// Busca valor no objeto testando variações de nome de coluna
+function getFieldValue(item, ...possibleKeys) {
+  if (!item) return '';
+  for (const key of possibleKeys) {
+    if (item[key] !== undefined && item[key] !== null) return String(item[key]);
+    // Checa sem diferenciar maiúsculas/minúsculas e espaços
+    const foundKey = Object.keys(item).find(k => k.trim().toLowerCase() === key.toLowerCase());
+    if (foundKey && item[foundKey] !== undefined && item[foundKey] !== null) {
+      return String(item[foundKey]);
+    }
+  }
+  return '';
+}
+
+function normalizeText(str) {
+  if (!str) return '';
+  return str
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function extractYear(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return null;
@@ -44,13 +69,18 @@ export function populateSelectOptions(data, onChange) {
   state.years.all.clear();
 
   data.forEach(item => {
-    if (item['Canal']) state.channels.all.add(item['Canal']);
-    if (item['Campanha']) state.campaigns.all.add(item['Campanha']);
-    if (item['Descrição']) {
-      const cleanDesc = item['Descrição'].replace(/^perdemos\s*-\s*/i, '');
+    const canal = getFieldValue(item, 'Canal');
+    const campanha = getFieldValue(item, 'Campanha');
+    const desc = getFieldValue(item, 'Descrição', 'Descricao');
+    const dateStr = getFieldValue(item, 'Data perdemos', 'Data');
+
+    if (canal) state.channels.all.add(canal);
+    if (campanha) state.campaigns.all.add(campanha);
+    if (desc) {
+      const cleanDesc = desc.replace(/^perdemos\s*-\s*/i, '');
       state.descriptions.all.add(cleanDesc);
     }
-    const year = extractYear(item['Data perdemos']);
+    const year = extractYear(dateStr);
     if (year) state.years.all.add(year);
   });
 
@@ -62,14 +92,10 @@ export function populateSelectOptions(data, onChange) {
 function setupInternalSearch() {
   const bindSearch = (input, categoryState) => {
     if (!input) return;
-    
-    // Filtra enquanto o usuário digita
     input.oninput = (e) => {
       categoryState.query = e.target.value.toLowerCase().trim();
       renderAllGroups();
     };
-
-    // Ao focar/clicar no input, re-renderiza para garantir a exibição imediata
     input.onfocus = () => {
       renderAllGroups();
     };
@@ -96,13 +122,11 @@ function renderCheckboxGroup(listContainer, tagsContainer, categoryState, clearB
   const query = categoryState.query;
   const selectedList = Array.from(categoryState.selected).sort();
 
-  // 1. Botão "Limpar" por coluna
   const clearBtn = document.getElementById(clearBtnId);
   if (clearBtn) {
     clearBtn.classList.toggle('hidden', categoryState.selected.size === 0);
   }
 
-  // 2. Renderizar Tags / Etiquetas selecionadas
   if (tagsContainer && selectedList.length > 0) {
     selectedList.forEach(val => {
       const tag = document.createElement('span');
@@ -116,7 +140,6 @@ function renderCheckboxGroup(listContainer, tagsContainer, categoryState, clearB
       removeBtn.type = 'button';
       removeBtn.innerHTML = '&times;';
       removeBtn.className = 'hover:bg-brand/30 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold text-[11px] leading-none transition-colors text-brand ml-0.5 cursor-pointer';
-      removeBtn.title = 'Remover filtro';
 
       removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -131,7 +154,6 @@ function renderCheckboxGroup(listContainer, tagsContainer, categoryState, clearB
     });
   }
 
-  // 3. Filtrar opções que ainda não foram selecionadas (se query for vazia, mostra todas)
   const optionsList = Array.from(categoryState.all)
     .filter(val => !categoryState.selected.has(val) && val.toLowerCase().includes(query))
     .sort();
@@ -217,34 +239,41 @@ export function resetAllFiltersState() {
 }
 
 export function filterData(data, activeStage = null) {
-  const term = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const searchEl = document.getElementById('search');
+  const rawTerm = searchEl ? searchEl.value : '';
+  const normalizedTerm = normalizeText(rawTerm);
+  const searchTokens = normalizedTerm.split(' ').filter(Boolean);
 
   return data.filter(item => {
-    const id = (item['ID'] || '').toLowerCase();
-    const name = (item['Razão'] || '').toLowerCase();
-    const phone = (item['Telefone'] || '').toLowerCase();
-    const taxa = (item['Taxa'] || '').toLowerCase();
-    const valor = (item['Valor'] || '').toLowerCase();
+    const id = getFieldValue(item, 'ID', 'Id');
+    const name = getFieldValue(item, 'Razão', 'Razao', 'Nome');
+    const phone = getFieldValue(item, 'Telefone', 'Contato', 'Celular');
+    const taxa = getFieldValue(item, 'Taxa');
+    const valor = getFieldValue(item, 'Valor');
+    const address = getFieldValue(item, 'Endereço', 'Endereco', 'Rua', 'Logradouro');
+    const number = getFieldValue(item, 'Número', 'Numero', 'Numeral', 'Num');
 
-    let rawDesc = item['Descrição'] || '';
-    let cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '');
-    const itemYear = extractYear(item['Data perdemos']);
+    const rawDesc = getFieldValue(item, 'Descrição', 'Descricao');
+    const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '');
+    const dateStr = getFieldValue(item, 'Data perdemos', 'Data');
+    const itemYear = extractYear(dateStr);
+    const channel = getFieldValue(item, 'Canal');
+    const campaign = getFieldValue(item, 'Campanha');
 
-    const matchesSearch = !term ||
-      name.includes(term) ||
-      phone.includes(term) ||
-      id.includes(term) ||
-      taxa.includes(term) ||
-      valor.includes(term);
+    // Texto consolidado contendo Rua + Número e demais dados
+    const searchableText = normalizeText(`${id} ${name} ${phone} ${address} ${number} ${taxa} ${valor}`);
 
-    const matchesChannel = state.channels.selected.size === 0 || state.channels.selected.has(item['Canal']);
-    const matchesCampaign = state.campaigns.selected.size === 0 || state.campaigns.selected.has(item['Campanha']);
+    // Garante que TODOS os termos digitados existam no cadastro
+    const matchesSearch = searchTokens.length === 0 || searchTokens.every(token => searchableText.includes(token));
+
+    const matchesChannel = state.channels.selected.size === 0 || state.channels.selected.has(channel);
+    const matchesCampaign = state.campaigns.selected.size === 0 || state.campaigns.selected.has(campaign);
     const matchesDesc = state.descriptions.selected.size === 0 || state.descriptions.selected.has(cleanDesc) || state.descriptions.selected.has(rawDesc);
     const matchesYear = state.years.selected.size === 0 || (itemYear && state.years.selected.has(itemYear));
 
     let matchesStage = true;
     if (activeStage !== null) {
-      matchesStage = (getStageBucket(getDaysDiff(item['Data perdemos'])) === activeStage);
+      matchesStage = (getStageBucket(getDaysDiff(dateStr)) === activeStage);
     }
 
     return matchesSearch && matchesChannel && matchesCampaign && matchesDesc && matchesYear && matchesStage;

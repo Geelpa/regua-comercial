@@ -106,22 +106,29 @@ export function renderTable(data, onCopyField) {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-theme-border hover:bg-theme-hover transition-colors';
     
-    const id = item['ID'] || '-';
-    const razao = item['Razão'] || '-';
-    const contato = item['Telefone'] || '-';
+    const id = item['ID'] || item['Id'] || '-';
+    const razao = item['Razão'] || item['Razao'] || '-';
+    const contato = item['Telefone'] || item['Contato'] || '-';
     
-    let perdemosMotivo = item['Descrição'] || '-';
+    // Concatena Endereço + Número para a visualização
+    const street = item['Endereço'] || item['Endereco'] || '';
+    const number = item['Número'] || item['Numero'] || item['Numeral'] || '';
+    const fullAddress = [street, number].filter(Boolean).join(', ') || '-';
+
+    let perdemosMotivo = item['Descrição'] || item['Descricao'] || '-';
     if (perdemosMotivo !== '-') {
       perdemosMotivo = perdemosMotivo.replace(/^perdemos\s*-\s*/i, '');
     }
+
+    const dataPerdemos = item['Data perdemos'] || item['Data'] || '-';
 
     tr.innerHTML = `
       <td class="px-3 py-1.5 text-xs ${clickableClasses}" title="Copiar ID">${id}</td>
       <td class="px-3 py-1.5 text-xs ${clickableClasses} max-w-[180px] truncate" title="Copiar Razão">${razao}</td>
       <td class="px-3 py-1.5 text-xs ${clickableClasses}" title="Copiar Contato">${contato}</td>
       <td class="px-3 py-1.5 text-xs text-theme-textMuted max-w-[150px] truncate" title="${perdemosMotivo}">${perdemosMotivo}</td>
-      <td class="px-3 py-1.5 text-xs text-theme-textMuted max-w-[200px] truncate" title="${item['Endereço'] || '-'}">${item['Endereço'] || '-'}</td>
-      <td class="px-3 py-1.5 text-xs text-theme-textMuted whitespace-nowrap">${item['Data perdemos'] || '-'}</td>
+      <td class="px-3 py-1.5 text-xs text-theme-textMuted max-w-[200px] truncate" title="${fullAddress}">${fullAddress}</td>
+      <td class="px-3 py-1.5 text-xs text-theme-textMuted whitespace-nowrap">${dataPerdemos}</td>
     `;
 
     tr.children[0].addEventListener('click', () => onCopyField(id, 'ID'));
