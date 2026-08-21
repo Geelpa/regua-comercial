@@ -1,126 +1,87 @@
-const tableBody = document.getElementById('tableBody');
-const emptyState = document.getElementById('empty');
-const summaryText = document.getElementById('summary');
+import { calculateClientScore } from "./score.js";
 
-let currentSort = { key: null, direction: 'asc' };
+const tableBody = document.getElementById("tableBody");
+const emptyState = document.getElementById("empty");
+const summaryText = document.getElementById("summary");
 
-export function initTableSort(onSortChange) {
-  const headers = document.querySelectorAll('th[data-sort]');
-  headers.forEach(header => {
-    header.addEventListener('click', () => {
-      const key = header.getAttribute('data-sort');
-      if (currentSort.key === key) {
-        if (currentSort.direction === 'asc') {
-          currentSort.direction = 'desc';
-        } else {
-          currentSort.key = null;
-          currentSort.direction = 'asc';
-        }
-      } else {
-        currentSort.key = key;
-        currentSort.direction = 'asc';
-      }
-      updateHeaderIcons();
-      if (onSortChange) onSortChange();
-    });
-  });
+/**
+ * Retorna as classes Tailwind para estilizar a badge conforme a pontuação
+ */
+function getScoreBadgeClass(score) {
+  if (score >= 75)
+    return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+  if (score >= 50) return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+  return "bg-rose-500/15 text-rose-400 border-rose-500/30";
 }
 
-function updateHeaderIcons() {
-  const headers = document.querySelectorAll('th[data-sort]');
-  headers.forEach(header => {
-    const key = header.getAttribute('data-sort');
-    const icon = header.querySelector('.sort-icon');
-    if (!icon) return;
-
-    if (currentSort.key === key) {
-      icon.textContent = currentSort.direction === 'asc' ? '▲' : '▼';
-      header.classList.add('text-brand');
-      header.classList.remove('text-theme-textMuted');
-    } else {
-      icon.textContent = '↕';
-      header.classList.remove('text-brand');
-      header.classList.add('text-theme-textMuted');
-    }
-  });
-}
-
-export function applySorting(data) {
-  if (!currentSort.key || !data || data.length === 0) return data;
-
-  return [...data].sort((a, b) => {
-    let valA = a[currentSort.key] || '';
-    let valB = b[currentSort.key] || '';
-
-    if (currentSort.key === 'Descrição') {
-      valA = valA.replace(/^perdemos\s*-\s*/i, '');
-      valB = valB.replace(/^perdemos\s*-\s*/i, '');
-    }
-
-    const dateA = parseDate(valA);
-    const dateB = parseDate(valB);
-
-    let result = 0;
-    if (dateA && dateB) {
-      result = dateA - dateB;
-    } else {
-      result = valA.toString().localeCompare(valB.toString(), 'pt-BR', { numeric: true, sensitivity: 'base' });
-    }
-
-    return currentSort.direction === 'asc' ? result : -result;
-  });
-}
-
-function parseDate(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const parts = dateStr.trim().split('/');
-  if (parts.length === 3) {
-    const day = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const year = parseInt(parts[2], 10);
-    const d = new Date(year, month, day);
-    if (!isNaN(d.getTime())) return d;
+/**
+ * Exibe o estado vazio quando nenhum cliente é retornado
+ */
+function showEmptyState(message) {
+  if (tableBody) tableBody.innerHTML = "";
+  if (emptyState) {
+    emptyState.textContent = message || "Nenhum cliente encontrado.";
+    emptyState.style.display = "block";
   }
-  return null;
+  if (summaryText) summaryText.textContent = "0 clientes exibidos.";
 }
 
-export function resetSortState() {
-  currentSort = { key: null, direction: 'asc' };
-  updateHeaderIcons();
-}
-
+/**
+ * Renderiza os dados da tabela
+ * @param {Array} data - Lista de clientes a serem exibidos
+ * @param {Function} onCopyField - Callback disparada ao clicar em um campo clicável
+ */
 export function renderTable(data, onCopyField) {
-  tableBody.innerHTML = '';
-  
+  if (!tableBody) return;
+
+  tableBody.innerHTML = "";
+
   if (!data || data.length === 0) {
-    showEmptyState('Nenhum cliente encontrado para este filtro.');
+    showEmptyState("Nenhum cliente encontrado para este filtro.");
     return;
   }
-  
-  emptyState.style.display = 'none';
-  summaryText.textContent = `Exibindo ${data.length} cliente(s).`;
 
-  const clickableClasses = 'cursor-pointer hover:text-brand hover:underline transition-colors font-medium text-theme-textMain';
+  if (emptyState) emptyState.style.display = "none";
+  if (summaryText)
+    summaryText.textContent = `Exibindo ${data.length} cliente(s).`;
+
+  const clickableClasses =
+    "cursor-pointer hover:text-brand hover:underline transition-colors font-medium text-theme-textMain";
 
   data.forEach((item) => {
-    const tr = document.createElement('tr');
-    tr.className = 'border-b border-theme-border hover:bg-theme-hover transition-colors';
-    
-    const id = item['ID'] || item['Id'] || '-';
-    const razao = item['Razão'] || item['Razao'] || '-';
-    const contato = item['Telefone'] || item['Contato'] || '-';
-    
-    // Concatena Endereço + Número para a visualização
-    const street = item['Endereço'] || item['Endereco'] || '';
-    const number = item['Número'] || item['Numero'] || item['Numeral'] || '';
-    const fullAddress = [street, number].filter(Boolean).join(', ') || '-';
+    const tr = document.createElement("tr");
+    tr.className =
+      "border-b border-theme-border hover:bg-theme-hover transition-colors";
 
-    let perdemosMotivo = item['Descrição'] || item['Descricao'] || '-';
-    if (perdemosMotivo !== '-') {
-      perdemosMotivo = perdemosMotivo.replace(/^perdemos\s*-\s*/i, '');
+    // Obtém o score previamente calculado ou realiza o cálculo na hora
+    const score =
+      item._score !== undefined ? item._score : calculateClientScore(item);
+    const badgeClass = getScoreBadgeClass(score);
+
+    // Campos principais
+    const id = item["ID"] || item["Id"] || "-";
+    const razao = item["Razão"] || item["Razao"] || item["Nome"] || "-";
+    const contato =
+      item["Telefone"] || item["Contato"] || item["Celular"] || "-";
+
+    // Formatação unificada do Endereço (Rua + Número)
+    const street =
+      item["Endereço"] ||
+      item["Endereco"] ||
+      item["Rua"] ||
+      item["Logradouro"] ||
+      "";
+    const number =
+      item["Número"] || item["Numero"] || item["Numeral"] || item["Num"] || "";
+    const fullAddress = [street, number].filter(Boolean).join(", ") || "-";
+
+    // Motivo limpo
+    let perdemosMotivo = item["Descrição"] || item["Descricao"] || "-";
+    if (perdemosMotivo !== "-") {
+      perdemosMotivo = perdemosMotivo.replace(/^perdemos\s*-\s*/i, "");
     }
 
-    const dataPerdemos = item['Data perdemos'] || item['Data'] || '-';
+    const dataPerdemos = item["Data perdemos"] || item["Data"] || "-";
 
     tr.innerHTML = `
       <td class="px-3 py-1.5 text-xs ${clickableClasses}" title="Copiar ID">${id}</td>
@@ -129,18 +90,24 @@ export function renderTable(data, onCopyField) {
       <td class="px-3 py-1.5 text-xs text-theme-textMuted max-w-[150px] truncate" title="${perdemosMotivo}">${perdemosMotivo}</td>
       <td class="px-3 py-1.5 text-xs text-theme-textMuted max-w-[200px] truncate" title="${fullAddress}">${fullAddress}</td>
       <td class="px-3 py-1.5 text-xs text-theme-textMuted whitespace-nowrap">${dataPerdemos}</td>
+            <td class="px-3 py-1.5 text-xs whitespace-nowrap">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${badgeClass}">
+          ${score} pts
+        </span>
+      </td>
     `;
 
-    tr.children[0].addEventListener('click', () => onCopyField(id, 'ID'));
-    tr.children[1].addEventListener('click', () => onCopyField(razao, 'Razão Social'));
-    tr.children[2].addEventListener('click', () => onCopyField(contato, 'Contato'));
+    // Eventos de clique para copiar
+    if (typeof onCopyField === "function") {
+      tr.children[1].addEventListener("click", () => onCopyField(id, "ID"));
+      tr.children[2].addEventListener("click", () =>
+        onCopyField(razao, "Razão Social"),
+      );
+      tr.children[3].addEventListener("click", () =>
+        onCopyField(contato, "Contato"),
+      );
+    }
 
     tableBody.appendChild(tr);
   });
-}
-
-export function showEmptyState(message = 'Importe um CSV para começar.') {
-  tableBody.innerHTML = '';
-  emptyState.style.display = 'block';
-  summaryText.textContent = message;
 }

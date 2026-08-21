@@ -1,59 +1,182 @@
-import { readCSVFile } from './parser.js';
-import { renderTable, showEmptyState, initTableSort, applySorting, resetSortState } from './table.js';
-import { copyFieldToClipboard } from './clipboard.js';
-import { populateSelectOptions, filterData, resetAllFiltersState } from './filters.js';
-import { updateKPIs, initKPICards, resetKPISelection } from './kpis.js';
+import { parseCSV } from './csv.js';
+import { populateSelectOptions, filterData, resetAllFilters } from './filters.js';
+import { updateKPICounts } from './regua.js';
+import { renderTable } from './table.js';
+import { calculateClientScore } from './score.js';
 
 let rawData = [];
-let currentStageFilter = null;
+let currentStage = null;
+let currentSort = { column: 'Score', direction: 'desc' }; // Padrão: Ordenar por maior Score
 
-const csvInput = document.getElementById('csvFile');
-const clearBtn = document.getElementById('clearBtn');
-const searchInput = document.getElementById('search');
-
-// Inicializa a ordenação nos cabeçalhos da tabela
-initTableSort(() => applyFiltersAndRender());
-
-initKPICards((selectedStage) => {
-  currentStageFilter = selectedStage;
-  applyFiltersAndRender();
+document.addEventListener('DOMContentLoaded', () => {
+  setupEventListeners();
 });
 
-csvInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    rawData = await readCSVFile(file);
-    if (rawData.length > 0) {
-      populateSelectOptions(rawData, applyFiltersAndRender);
-      updateKPIs(rawData);
-      applyFiltersAndRender();
-    } else {
-      showEmptyState('O arquivo fornecido está vazio ou é inválido.');
-    }
-  } catch (err) {
-    showEmptyState('Erro ao tentar processar o arquivo CSV.');
+function setupEventListeners() {
+  // Importação do arquivo CSV
+  const csvFileInput = document.getElementById('csvFile');
+  if (csvFileInput) {
+    csvFileInput.addEventListener('change', handleCSVImport);
   }
-});
+
+  // Botão Limpar Tudo
+  const clearBtn = document.getElementById('clearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      resetAllFilters();
+      currentStage = null;
+      updateStageActiveUI(null);
+      applyFiltersAndRender();
+    });
+  }
+
+  // Cards da Régua (KPIs D+3, D+7, etc.)
+  const kpiCards = document.querySelectorAll('.kpi-card');
+  kpiCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const stage = parseInt(card.dataset.stage, 10);
+      currentStage = (currentStage === stage) ? null : stage;
+      updateStageActiveUI(currentStage);
+      applyFiltersAndRender();
+    });
+  });
+
+  // Ordenação de colunas da tabela
+  const headers = document.querySelectorAll('th[data-sort]');
+  headers.forEach(header => {
+    header.addEventListener('click', () => {
+      const column = header.dataset.sort;
+      if (currentSort.column === column) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.column = column;
+        currentSort.direction = (column === 'Score') ? 'desc' : 'asc';
+      }
+      updateSortIcons(headers, header);
+      applyFiltersAndRender();
+    });
+  });
+}
+
+function handleCSVImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  parseCSV(file, (data) => {
+    // Enriquece cada cliente com o cálculo do Score
+    rawData = data.map(item => {
+      item._score = calculateClientScore(item);
+      return item;
+    });
+
+    // Preenche opções nos selects/checkboxes e associa o callback de atualização
+    populateSelectOptions(rawData, () => {
+      applyFiltersAndRender();
+    });
+
+    updateKPICounts(rawData);
+    applyFiltersAndRender();
+    showToast('CSV importado com sucesso!');
+  });
+}
 
 function applyFiltersAndRender() {
-  const filtered = filterData(rawData, currentStageFilter);
-  const sorted = applySorting(filtered);
-  renderTable(sorted, copyFieldToClipboard);
+  // 1. Aplica filtros acumulados
+  let filtered = filterData(rawData, currentStage);
+
+  // 2. Aplica ordenação ativa
+  filtered = sortData(filtered, currentSort.column, currentSort.direction);
+
+  // 3. Renderiza a tabela
+  renderTable(filtered, handleCopyField);
 }
 
-if (searchInput) {
-  searchInput.addEventListener('input', applyFiltersAndRender);
+function sortData(data, column, direction) {
+  return [...data].sort((a, b) => {
+    let valA, valB;
+
+    if (column === 'Score') {
+      valA = a._score ?? 0;
+      valB = b._score ?? 0;
+    } else if (column === 'ID') {
+      valA = a['ID'] || a['Id'] || '';
+      valB = b['ID'] || b['Id'] || '';
+    } else if (column === 'Razão') {
+      valA = (a['Razão'] || a['Razao'] || a['Nome'] || '').toLowerCase();
+      valB = (b['Razão'] || b['Razao'] || b['Nome'] || '').toLowerCase();
+    } else if (column === 'Telefone') {
+      valA = a['Telefone'] || a['Contato'] || '';
+      valB = b['Telefone'] || b['Contato'] || '';
+    } else if (column === 'Descrição') {
+      valA = (a['Descrição'] || a['Descricao'] || '').toLowerCase();
+      valB = (b['Descrição'] || b['Descricao'] || '').toLowerCase();
+    } else if (column === 'Endereço') {
+      valA = (a['Endereço'] || a['Endereco'] || '').toLowerCase();
+      valB = (b['Endereço'] || b['Endereco'] || '').toLowerCase();
+    } else if (column === 'Data perdemos') {
+      valA = parseDateToTimestamp(a['Data perdemos'] || a['Data']);
+      valB = parseDateToTimestamp(b['Data perdemos'] || b['Data']);
+    } else {
+      return 0;
+    }
+
+    if (valA < valB) return direction === 'asc' ? -1 : 1;
+    if (valA > valB) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
 }
 
-clearBtn.addEventListener('click', () => {
-  rawData = [];
-  currentStageFilter = null;
-  csvInput.value = '';
-  if (searchInput) searchInput.value = '';
-  resetAllFiltersState();
-  resetSortState();
-  resetKPISelection();
-  updateKPIs([]);
-  showEmptyState();
-});
+function parseDateToTimestamp(dateStr) {
+  if (!dateStr) return 0;
+  const parts = dateStr.trim().split('/');
+  if (parts.length !== 3) return 0;
+  return new Date(parts[2], parts[1] - 1, parts[0]).getTime();
+}
+
+function updateStageActiveUI(activeStage) {
+  const kpiCards = document.querySelectorAll('.kpi-card');
+  kpiCards.forEach(card => {
+    const stage = parseInt(card.dataset.stage, 10);
+    if (stage === activeStage) {
+      card.classList.add('border-brand', 'ring-1', 'ring-brand');
+    } else {
+      card.classList.remove('border-brand', 'ring-1', 'ring-brand');
+    }
+  });
+}
+
+function updateSortIcons(headers, activeHeader) {
+  headers.forEach(h => {
+    const icon = h.querySelector('.sort-icon');
+    if (!icon) return;
+    if (h === activeHeader) {
+      icon.textContent = currentSort.direction === 'asc' ? '↑' : '↓';
+      icon.classList.add('text-brand');
+    } else {
+      icon.textContent = '↕';
+      icon.classList.remove('text-brand');
+    }
+  });
+}
+
+function handleCopyField(text, fieldName) {
+  if (!text || text === '-') return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast(`${fieldName} copiado!`);
+  }).catch(err => {
+    console.error('Erro ao copiar:', err);
+  });
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.remove('opacity-0', 'pointer-events-none');
+  toast.classList.add('opacity-100');
+
+  setTimeout(() => {
+    toast.classList.remove('opacity-100');
+    toast.classList.add('opacity-0', 'pointer-events-none');
+  }, 2500);
+}
