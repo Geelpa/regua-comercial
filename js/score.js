@@ -1,56 +1,107 @@
 import { getDaysDiff, getEffectiveDateStr } from './regua.js';
 
-// Tabela de pontuações das opções
 const SCORE_CONFIG = {
+  regrasIndicacao: {
+    dataInicio: '01/04/2026',
+    bonusTaxa: 15
+  },
   motivos: {
-    'sem cobertura': 10,
-    'sem interesse': 20,
-    'preco': 30,
+    preco: 90,
+    'nao interagiu': 65,
+    'sem resposta': 65,
+    'momento inadequado': 70,
+    'fidelidade ativa': 75,
     'fechou com concorrente': 40,
-    'default': 50
+    inadimplente: 35,
+    'sem cobertura': 25,
+    'sem interesse': 30,
+    default: 35
   },
   diasPerdido: [
     { maxDias: 7, score: 90 },
-    { maxDias: 30, score: 75 },
-    { maxDias: 90, score: 50 },
-    { maxDias: 360, score: 40 },
-    { maxDias: Infinity, score: 20 }
+    { maxDias: 30, score: 80 },
+    { maxDias: 90, score: 65 },
+    { maxDias: 180, score: 50 },
+    { maxDias: 330, score: 35 },
+    { maxDias: 360, score: 25 },
+    { maxDias: Infinity, score: 15 }
   ],
   canais: {
-    'outbound': 30,
-    'inbound': 70,
-    'indicacao': 90,
-    'default': 30
+    indicacao: 85,
+    condominio: 90,
+    google: 70,
+    'redes sociais': 65,
+    'ja foi cliente': 75,
+    'nao interagiu': 45,
+    outros: 40,
+    default: 30
   },
   campanhas: {
-    'black friday': 20,
-    'google ads': 60,
-    'organico': 80,
-    'default': 20
+    'taxa isenta': 85,
+    cashback: 85,
+    'cash back': 85,
+    desconto: 80,
+    promocional: 80,
+    'campanha especial': 80,
+    default: 30
   }
 };
 
-// Menores valores possíveis de cada categoria (usados quando o campo estiver vazio)
 const MIN_SCORES = {
-  motivo: 10,   // 'sem cobertura'
-  tempo: 10,    // > 360 dias
-  canal: 30,    // 'outbound'
-  campanha: 20  // 'black friday'
+  motivo: 20,
+  tempo: 15,
+  canal: 20,
+  campanha: 20
 };
 
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function findScoreByKeyword(value, scores) {
+  const normalizedValue = normalizeText(value);
+  const match = Object.keys(scores).find(keyword => (
+    keyword !== 'default' && normalizedValue.includes(keyword)
+  ));
+
+  return match ? scores[match] : scores.default;
+}
+
+function isAfterDate(dateStr, minimumDateStr) {
+  const [day, month, year] = normalizeText(dateStr).split('/').map(Number);
+  const [minimumDay, minimumMonth, minimumYear] = minimumDateStr.split('/').map(Number);
+
+  if (![day, month, year].every(Number.isFinite)) return false;
+
+  return new Date(year, month - 1, day) >= new Date(
+    minimumYear,
+    minimumMonth - 1,
+    minimumDay
+  );
+}
+
+function hasFeeRelatedOffer(value) {
+  const normalizedValue = normalizeText(value);
+  return ['taxa', 'cashback', 'cash back'].some(keyword => (
+    normalizedValue.includes(keyword)
+  ));
+}
+
 export function calculateClientScore(item) {
-  // 1. Motivo (Peso 35%)
   const rawDesc = item['Descrição'] || item['Descricao'] || '';
   let scoreMotivo = MIN_SCORES.motivo;
   if (rawDesc.trim()) {
-    const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '').toLowerCase().trim();
-    scoreMotivo = SCORE_CONFIG.motivos[cleanDesc] ?? SCORE_CONFIG.motivos['default'];
+    const cleanDesc = rawDesc.replace(/^perdemos\s*-\s*/i, '');
+    scoreMotivo = findScoreByKeyword(cleanDesc, SCORE_CONFIG.motivos);
   }
 
-  // 2. Tempo (Data Perdemos com fallback para Data Cadastro) (Peso 35%)
   const effectiveDateStr = getEffectiveDateStr(item);
   let scoreTempo = MIN_SCORES.tempo;
-  
   if (effectiveDateStr) {
     const dias = getDaysDiff(effectiveDateStr);
     if (dias >= 0) {
@@ -59,26 +110,33 @@ export function calculateClientScore(item) {
     }
   }
 
-  // 3. Canal (Peso 15%)
-  const canal = (item['Canal'] || '').toLowerCase().trim();
+  const canal = item['Canal'] || item['Origem'] || '';
   let scoreCanal = MIN_SCORES.canal;
-  if (canal) {
-    scoreCanal = SCORE_CONFIG.canais[canal] ?? SCORE_CONFIG.canais['default'];
-  }
+  if (canal.trim()) scoreCanal = findScoreByKeyword(canal, SCORE_CONFIG.canais);
 
-  // 4. Campanha (Peso 15%)
-  const campanha = (item['Campanha'] || '').toLowerCase().trim();
+  const campanha = item['Campanha'] || item['Campaign'] || '';
   let scoreCampanha = MIN_SCORES.campanha;
-  if (campanha) {
-    scoreCampanha = SCORE_CONFIG.campanhas[campanha] ?? SCORE_CONFIG.campanhas['default'];
-  }
+  if (campanha.trim()) scoreCampanha = findScoreByKeyword(campanha, SCORE_CONFIG.campanhas);
 
-  const total = Math.round(
-    (scoreMotivo * 0.35) +
-    (scoreTempo * 0.35) +
-    (scoreCanal * 0.15) +
+  let total = Math.round(
+    (scoreMotivo * 0.40) +
+    (scoreTempo * 0.25) +
+    (scoreCanal * 0.20) +
     (scoreCampanha * 0.15)
   );
+
+  const isReferralChannel = ['indicacao', 'condominio'].some(keyword => (
+    normalizeText(canal).includes(keyword)
+  ));
+  const reasonOrCampaignHasFee = hasFeeRelatedOffer(rawDesc) || hasFeeRelatedOffer(campanha);
+
+  if (
+    isReferralChannel &&
+    reasonOrCampaignHasFee &&
+    isAfterDate(effectiveDateStr, SCORE_CONFIG.regrasIndicacao.dataInicio)
+  ) {
+    total += SCORE_CONFIG.regrasIndicacao.bonusTaxa;
+  }
 
   return Math.min(100, Math.max(0, total));
 }
