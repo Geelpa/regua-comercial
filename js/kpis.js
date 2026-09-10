@@ -6,7 +6,7 @@ const ACTIVE_CLASSES = ['border-brand', 'bg-brand-light', 'ring-1', 'ring-brand'
 const INACTIVE_CLASSES = ['border-theme-border', 'bg-theme-card', 'shadow-sm'];
 
 export function updateKPIs(data) {
-  const counts = { 3: 0, 7: 0, 30: 0, 90: 0, 360: 0 };
+  const counts = { 3: 0, 7: 0, 30: 0, 60: 0, 90: 0, 180: 0, 330: 0, 360: 0, 375: 0 };
   data.forEach(item => {
     const bucket = getStageBucket(getDaysDiff(item['Data perdemos']));
     if (bucket && counts[bucket] !== undefined) counts[bucket]++;

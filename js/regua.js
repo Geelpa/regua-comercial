@@ -23,18 +23,18 @@ export function getEffectiveDateStr(item) {
 /**
  * Retorna o estágio da régua com base nos dias passados
  * @param {number} days - Dias corridos
- * @returns {number|null} Estágio da régua (3, 7, 30, 60, 90, 180, 360)
+ * @returns {number|null} Estágio da régua (3, 7, 30, 60, 90, 180, 330, 360, 375)
  */
 export function getStageBucket(days) {
-  if (days < 0) return null;
-  if (days <= 3) return 3;
-  if (days <= 7) return 7;
-  if (days <= 30) return 30;
-  if (days <= 60) return 60;
-  if (days <= 90) return 90;
-  if (days <= 180) return 180;
-  if (days <= 360) return 360;
-  return null;
+  const stages = [3, 7, 30, 60, 90, 180, 330, 360, 375];
+
+  if (!Number.isFinite(days) || days < stages[0]) {
+    return null;
+  }
+
+  return stages.reduce((currentStage, stage) => (
+    days >= stage ? stage : currentStage
+  ), null);
 }
 
 /**
@@ -68,7 +68,7 @@ export function getDaysDiff(dateStr) {
 }
 
 export function updateKPICounts(data) {
-  const counts = { 3: 0, 7: 0, 30: 0, 60: 0, 90: 0, 180: 0, 360: 0 };
+  const counts = { 3: 0, 7: 0, 30: 0, 60: 0, 90: 0, 180: 0, 330: 0, 360: 0, 375: 0 };
 
   if (Array.isArray(data)) {
     data.forEach(item => {

@@ -16,7 +16,10 @@ Aplicação estática para acompanhamento da régua de resgate.
 
 ## Régua
 
-D+3, D+7, D+30, D+90 e D+360.
+D+3, D+7, D+30, D+60, D+90, D+180, D+330, D+360 e D+375.
+
+Cada opção vale a partir do seu marco até o marco seguinte. A opção D+375 vale
+também para os dias posteriores; registros com menos de 3 dias não entram na régua.
 
 ## CSV
 

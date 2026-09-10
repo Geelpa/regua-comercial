@@ -3,7 +3,7 @@
  * Responsabilidade: cálculo e formatação das datas da régua.
  */
 
-export const RULER_DAYS = [3, 7, 30, 90, 360];
+export const RULER_DAYS = [3, 7, 30, 60, 90, 180, 330, 360, 375];
 
 export function parseDateInput(value) {
   if (!value) return null;
